@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Play
+Categories=AudioVideo;Player;
+Exec=xterm -fullscreen -e "play %F"
+Terminal=false
+Icon=/opt/play/icon.png
