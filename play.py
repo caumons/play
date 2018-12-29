@@ -215,6 +215,7 @@ class Play:
     def get_player_args(self, filename):
         player_args = '-o %s' % self.output
         if mimetypes.guess_type(filename)[0].startswith('video'):
+            player_args += ' --aspect-mode stretch'
             if self.win:
                 player_args += ' --win "%s"' % self.win
             elif OMXPLAYER_WIN:
