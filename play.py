@@ -256,7 +256,7 @@ class Play:
             print("\n%02d. Playing '%s'..." % (self.index + 1, os.path.basename(filename)))
             if self.playlist_name:
                 self.playlist_dao.update(self.playlist_name, self.index)
-            command = 'omxplayer %s "%s"' % (self.get_player_args(filename), filename)
+            command = 'omxplayer --blank %s "%s"' % (self.get_player_args(filename), filename)
             play_exitcode = os.system(command)
             if play_exitcode == 2:  # ^c pressed
                 self.print_playlist()
