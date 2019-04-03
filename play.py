@@ -14,6 +14,7 @@ import glob
 import mimetypes
 import os
 import random
+import requests
 try:
     import settings
 except ImportError:
@@ -83,17 +84,30 @@ class Play:
         args = arg_parser.parse_args()
         return args
 
+    def is_url(self, path):
+        return path.startswith(('http://', 'https://'))
+
+    def get_filename(self, path):
+        return path if self.is_url(path) else os.path.basename(path)
+
+    def get_mime_type(self, path):
+        if self.is_url(path):
+            try:
+                return requests.head(path).headers.get('content-type', '')
+            except requests.exceptions.RequestException:
+                return ''
+        else:
+            return mimetypes.guess_type(path)[0] or ''
+
     def validate_file(self, path, playlist_type=None):
         allowed_types = playlist_type or self.type or ('audio', 'video')
-        mime_type = mimetypes.guess_type(path)[0]
-        return (not os.path.isdir(path) and mime_type and mime_type.startswith(allowed_types) and
-                not path.endswith(EXCLUDED_FORMATS))
-
-    def escape_path(self, path):
-        return path.replace('[', '[[]').replace('*', '[*]').replace('?', '[?]')
+        return self.get_mime_type(path).startswith(allowed_types) and not path.endswith(EXCLUDED_FORMATS)
 
     def colored(self, text):
         return '\033[93m%s\033[0m' % text
+
+    def sorted(self, iterable):
+        return sorted(iterable, key=lambda item: item.lower())
 
     def set_playlist(self):
         self.index = 0
@@ -111,6 +125,9 @@ class Play:
         if not playlist:
             for path in self.paths:
                 path = path.strip()
+                if self.is_url(path) and self.validate_file(path):
+                    playlist.append(path)
+                    continue
                 if path == '.':
                     path = os.getcwd()
                 elif not path.startswith('/'):
@@ -120,24 +137,22 @@ class Play:
                         if self.recursive:
                             for root, dirnames, filenames in os.walk(path):
                                 dirnames.sort(key=lambda p: p.lower())
-                                for filename in sorted(filenames, key=lambda p: p.lower()):
+                                for filename in self.sorted(filenames):
                                     new_path = os.path.join(root, filename)
                                     if self.validate_file(new_path):
                                         playlist.append(new_path)
                         else:
                             playlist += [new_path for new_path
-                                         in sorted(glob.glob(os.path.join(self.escape_path(path), '*')),
-                                                   key=lambda p: p.lower())
+                                         in self.sorted(glob.glob(os.path.join(glob.escape(path), '*')))
                                          if self.validate_file(new_path)]
                     elif self.validate_file(path):
                         playlist.append(path)
                 else:
-                    playlist += [new_path for new_path in sorted(glob.glob(self.escape_path(path)))
-                                 if self.validate_file(new_path)]
+                    playlist += [new_path for new_path in self.sorted(glob.glob(path)) if self.validate_file(new_path)]
             if playlist and not self.type:
                 first_file = playlist[0]
-                self.type = mimetypes.guess_type(first_file)[0].split('/')[0]
-                print("\nGuessed type is '%s' from first file '%s'" % (self.type, os.path.basename(first_file)))
+                self.type = self.get_mime_type(first_file).split('/')[0]
+                print("\nGuessed type is '%s' from first file '%s'" % (self.type, self.get_filename(first_file)))
                 playlist = [filepath for filepath in playlist if self.validate_file(filepath)]
             if 0 < self.offset < len(playlist):
                 playlist = playlist[self.offset:]
@@ -161,7 +176,7 @@ class Play:
                 print("Playlists:")
                 for playlist in playlists:
                     playlist_files = playlist['content'].split('\n')
-                    current_file = os.path.basename(playlist_files[playlist['next']])
+                    current_file = self.get_filename(playlist_files[playlist['next']])
                     print("- '%s' (%s) %d/%d >> '%s'" % (
                           playlist['name'], playlist['type'], playlist['next'] + 1, len(playlist_files), current_file))
             else:
@@ -172,13 +187,15 @@ class Play:
             if playlist:
                 playlist_dirs = []
                 for playlist_file in playlist['content'].split('\n'):
+                    if self.is_url(playlist_file):
+                        continue
                     file_dir = os.path.join(os.path.dirname(os.path.realpath(playlist_file)), '*')
                     if file_dir not in playlist_dirs:
                         playlist_dirs.append(file_dir)
                 playlist_type = tuple(playlist['type'].split('/')) if '/' in playlist['type'] else playlist['type']
                 updated_files = []
                 for playlist_dir in playlist_dirs:
-                    updated_files += [new_path for new_path in sorted(glob.glob(playlist_dir))
+                    updated_files += [new_path for new_path in self.sorted(glob.glob(playlist_dir))
                                       if self.validate_file(new_path, playlist_type)]
                 self.playlist_dao.update(self.update, playlist['next'], updated_files)
                 print("Updated playlist '%s'" % self.update)
@@ -214,18 +231,18 @@ class Play:
 
     def get_player_args(self, filename):
         player_args = '-o %s' % self.output
-        if mimetypes.guess_type(filename)[0].startswith('video'):
+        if self.get_mime_type(filename).startswith('video'):
             player_args += ' --aspect-mode stretch'
             if self.win:
-                player_args += ' --win "%s"' % self.win
+                player_args += ' --win "%s" --blank' % self.win
             elif OMXPLAYER_WIN:
-                player_args += ' --win "%s"' % OMXPLAYER_WIN
+                player_args += ' --win "%s" --blank' % OMXPLAYER_WIN
         return player_args
 
     def print_playlist(self):
         print("\n%d Files at playlist:" % self.playlist_len)
         print('\n'.join(
-              '%02d. %s' % (index, os.path.basename(filename)) for index, filename in enumerate(self.playlist, 1)))
+              '%02d. %s' % (index, self.get_filename(filename)) for index, filename in enumerate(self.playlist, 1)))
 
     def get_next_index(self):
         if self.index < self.playlist_len - 1:
@@ -251,9 +268,9 @@ class Play:
         """
         while self.index is not None:
             filename = self.playlist[self.index]
-            if not os.path.exists(filename):
+            if not os.path.exists(filename) and not self.is_url(filename):
                 sys.exit(self.colored("\n'%s' could not be played, is it available?" % filename))
-            print("\n%02d. Playing '%s'..." % (self.index + 1, os.path.basename(filename)))
+            print("\n%02d. Playing '%s'..." % (self.index + 1, self.get_filename(filename)))
             if self.playlist_name:
                 self.playlist_dao.update(self.playlist_name, self.index)
             command = 'omxplayer %s "%s"' % (self.get_player_args(filename), filename)
@@ -261,7 +278,7 @@ class Play:
             if play_exitcode == 2:  # ^c pressed
                 self.print_playlist()
                 input_val = input(("\nnext file? (current is %d: '%s') [n]/y/number\n" % (
-                    self.index + 1, os.path.basename(filename)))).strip().lower()
+                    self.index + 1, self.get_filename(filename)))).strip().lower()
                 if input_val in ('', 'n'):
                     self.index = None
                 elif input_val == 'y':

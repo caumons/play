@@ -22,6 +22,10 @@ You can pass one or multiple files to play them sequentially:
 
     play audio.mp3 video.mp4
 
+You can reproduce audio and video files via Internet streaming (http or https) too:
+
+    play http://mydomain.com/audiofile https://mydomain.com/videofile
+
 Wildcards can also be used:
 
     play *.mp3
@@ -41,9 +45,9 @@ By default, play will reproduce any audio or video file. You can change this beh
     play -t both .  ⇐ Default option. Plays audio and video files
     play -t auto .  ⇐ Uses the type from the first media file found
 
-Of course, you can mix all these options, e.g.:
+Of course, you can mix all these options, even with local and streaming files e.g.:
 
-    play -r audio.mp3 video.mp4 *.mkv folder
+    play -r audio.mp3 video.mp4 https://mydomain.com/mediafile *.mkv folder
 
 To play files already saved in a playlist you just need to tell *play* the list name:
 
@@ -72,7 +76,7 @@ You can *control the file playback using the same shortcuts as Omxplayer*, plus 
 
 ## Creating playlists
 
-To create a **new playlist (-n, --playlist)** you have to give it a name and tell *play* which are the files. You can use the params to find the files as explained in the section "Playing files". Here you have some examples:
+To create a **new playlist (-n, --playlist)** you have to give it a name and tell *play* which are the files (local or streaming). You can use the params to find the files as explained in the section "Playing files". Here you have some examples:
 
     play -n playlist1 /path/to/files1/  ⇐ New audio/video playlist
     play -rn playlist2  /path/to/files2/  ⇐ New recursive audio/video playlist
